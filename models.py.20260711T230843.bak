@@ -113,6 +113,6 @@ def ensure_db_column(engine, table="users", column="custom_theme", ctype="JSON")
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ctype}"))
                 conn.commit()
 
-# Add new columns to existing tables safely (idempotent)    
-for table, col, ctype in [("messages", "story_time", "DATETIME"), ("rooms", "channel_id", "VARCHAR"), ("personas", "ai_instructions", "TEXT")]:
+# Add new columns to existing tables safely (idempotent)
+for table, col, ctype in [("messages", "story_time", "DATETIME"), ("rooms", "channel_id", "VARCHAR")]:
     ensure_db_column(engine, table, col, ctype)

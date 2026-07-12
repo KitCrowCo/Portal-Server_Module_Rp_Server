@@ -50,15 +50,14 @@ class Persona(Base):
     """A display identity owned by a user. Names are unique per owner only."""
     __tablename__ = "personas"
     __table_args__ = (UniqueConstraint("owner_username", "name"),)
-    id              = Column(Integer, primary_key=True, autoincrement=True)
-    name            = Column(String, nullable=False)
-    owner_username  = Column(String, nullable=False)
-    description     = Column(Text, default="")
-    sprite          = Column(String, default="") # asset path for persona icon
-    ai_enabled      = Column(Boolean, default=False)
-    ai_instructions = Column(Text, default="")
-    info            = Column(JSON, default={}) # extensible: color, pronouns, etc.
-    
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    name           = Column(String, nullable=False)
+    owner_username = Column(String, nullable=False)
+    description    = Column(Text, default="")
+    sprite         = Column(String, default="")         # asset path for persona icon
+    ai_enabled     = Column(Boolean, default=False)
+    info           = Column(JSON, default={})           # extensible: color, pronouns, etc.
+
 class Message(Base):
     """A chat message in a room. Soft-delete via deleted flag. Edit history via edited_at."""
     __tablename__ = "messages"
@@ -113,6 +112,6 @@ def ensure_db_column(engine, table="users", column="custom_theme", ctype="JSON")
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ctype}"))
                 conn.commit()
 
-# Add new columns to existing tables safely (idempotent)    
-for table, col, ctype in [("messages", "story_time", "DATETIME"), ("rooms", "channel_id", "VARCHAR"), ("personas", "ai_instructions", "TEXT")]:
+# Add new columns to existing tables safely (idempotent)
+for table, col, ctype in [("messages", "story_time", "DATETIME"), ("rooms", "channel_id", "VARCHAR")]:
     ensure_db_column(engine, table, col, ctype)

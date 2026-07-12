@@ -6,71 +6,44 @@ DM mode: AI narrates scenarios, events, and NPCs as Dungeon Master.
 Settings stored per-room in room.info["ai"].
 History summary stored in room.info["ai"]["history_summary"] to compress context.
 """
-import json, uuid, asyncio, httpx, random, pathlib
+import json, uuid, asyncio
+import random
 from datetime import datetime
+import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm.attributes import flag_modified
+
 from .models import Room, Persona, Message, UserSession, SessionLocal
-
-ENV = {}
-_AI_CONFIG_PATH = pathlib.Path("./data/rp_server/ai_server_config.json")
-LORE_ROOT = pathlib.Path("./data/_common")
-_AI_USER = "system_ai"
-_DEFAULT = {"mode": "off", "persona": "", "dm_persona": "DM",
-            "ollama_url": "http://localhost:11434", "model": "",
-            "trigger": "every_n", "trigger_value": 3, "trigger_count": 0,
-            "scenario": "", "history_summary": "", "history_depth": 20}
-
-_DM_PROMPTS = {
-    "general": "You are the Narrator for this collaborative story. Create engaging scene developments: describe environments, introduce events, and voice minor NPCs briefly. Do not play named characters already present - you are facilitating a story, not directly playing the established characters. Be concise: one or two paragraphs, then stop and leave room for the players to respond.",
-    "otome": """[Role]
-You are the Atmospheric Narrator facilitating a slice-of-life rom>
-
-[Objective]
-Manage the environment, sensory details, and minor background cha>
-
-[Directives]
-* Strict Boundary: You must never write dialogue, internal though>
-* Environmental Storytelling: Focus on the mood. Describe changes>
-* NPC Management: Control minor NPCs (e.g., baristas, coworkers, >
-* Conciseness: Keep your descriptions brief. Set the immediate sc>
-""",
-    "ttrpg": "You are the Dungeon Master for this tabletop-style story. Describe environments, adjudicate the outcomes of stated actions, control NPCs and monsters, and drive the plot forward when appropriate, including initiating combat, presenting choices, and introducing complications. Do not narrate actions or dialogue for the player characters themselves. Be concise but give players clear information to act on.",
-}
-
-DM_MODE = "You are the Narrator for this collaborative story. Create engaging scene developments: describe environments, introduce events, voice NPCs briefly. Do not play named characters already present, you are facilitating a story by creating scenarios not directly playing. Be concise, one or two paragraphs."
-
-
-#"You are the Dungeon Master/Narrator for this collaborative story. Create engaging scene developments: describe environments, introduce events, voice NPCs briefly. Do not play named characters already present. Be concise, one or two paragraphs."
+#from backend.ws_manager import manager as _ws
 
 router = APIRouter()
 
-def init_module(env: dict):
-    global ENV, WS
-    ENV.update(env)
-    WS = env["ws"]
+_AI_USER = "system_ai"
+_DEFAULT = {
+    "mode": "off", "persona": "", "dm_persona": "DM",
+    "ollama_url": "http://localhost:11434", "model": "",
+    "trigger": "every_n", "trigger_value": 3, "trigger_count": 0,
+    "scenario": "", "history_summary": "", "history_depth": 20
+}
 
-def ai_server_enabled() -> bool:
-    try: return json.loads(_AI_CONFIG_PATH.read_text()).get("enabled", True) if _AI_CONFIG_PATH.exists() else True
-    except Exception: return True
+DM_MODE = """[Role]
+You are the Atmospheric Narrator facilitating a slice-of-life romance story between two main characters. Your purpose is to set the stage and provide ambiance, allowing the human writers to drive the relationship and plot.
 
-def set_ai_server_enabled(val: bool):
-    _AI_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _AI_CONFIG_PATH.write_text(json.dumps({"enabled": bool(val)}))
+[Objective]
+Manage the environment, sensory details, and minor background characters to create a lived-in, intimate world that reacts to the protagonists without overshadowing them.
 
-def _load_lore_text(folders: list, max_chars: int = 4000) -> str:
-    """Simple organizer, not a retrieval system: concatenates markdown files from the
-    listed wiki-relative folders, truncated to a budget. Anything smarter (indexing,
-    relevance ranking) belongs in a dedicated AI tools module, not here."""
-    if not folders: return ""
-    chunks = []
-    for folder in folders:
-        base = (LORE_ROOT / folder.strip()).resolve()
-        if not str(base).startswith(str(LORE_ROOT.resolve())) or not base.is_dir(): continue
-        for f in sorted(base.glob("*.md")):
-            chunks.append(f"### {f.stem}\n{f.read_text(encoding='utf-8', errors='ignore')}")
-    return "\n\n".join(chunks)[:max_chars]
+[Directives]
+* Strict Boundary: You must never write dialogue, internal thoughts, or actions for the two main characters. Let them speak and act for themselves.
+* Environmental Storytelling: Focus on the mood. Describe changes in weather, the lighting in a room, background noise, and the passage of time to enhance the emotional tone of the scene.
+* NPC Management: Control minor NPCs (e.g., baristas, coworkers, pets, passing strangers) to create natural social dynamics, gentle interruptions, or situational prompts that give the main characters something to react to.
+* Conciseness: Keep your descriptions brief. Set the immediate scene, resolve any background actions, and then stop generating. Always leave the narrative open for the protagonists to engage with each other.
+"""
+
+#"You are the Narrator for this collaborative story. Create engaging scene developments: describe environments, introduce events, voice NPCs briefly. Do not play named characters already present, you are facilitating a story by creating scenarios not directly playing. Be concise, one or two paragraphs."
+
+#"You are the Dungeon Master/Narrator for this collaborative story. Create engaging scene developments: describe environments, introduce events, voice NPCs briefly. Do not play named characters already present. Be concise, one or two paragraphs."
+
 
 # --- Helpers ---
 
@@ -83,7 +56,8 @@ def _save_cfg(room: Room, cfg: dict, db):
 
 # --- Context Building ---
 
-def _recent(room_id: str, n: int, db) -> list: return db.query(Message).filter(Message.room_id == room_id, Message.deleted == False, Message.user_name != _AI_USER).order_by(Message.created_at.asc()).all()[-n:]
+def _recent(room_id: str, n: int, db) -> list:
+    return db.query(Message).filter(Message.room_id == room_id, Message.deleted == False, Message.user_name != _AI_USER).order_by(Message.created_at.asc()).all()[-n:]
 
 def _compress(room: Room, cfg: dict, db) -> str:
     all_msgs = db.query(Message).filter(Message.room_id == room.id, Message.deleted == False, Message.user_name != _AI_USER).order_by(Message.created_at.asc()).all()
@@ -99,27 +73,20 @@ def _build_messages(room: Room, cfg: dict, db) -> list:
     recent = _recent(room.id, int(cfg.get("history_depth",20)), db)
     world = (room.info or {}).get("world_detail","") or (room.info or {}).get("world","")
     scenario = cfg.get("scenario",""); summary = cfg.get("history_summary","")
-    lore_raw = (room.info or {}).get("lore_folders", "")
-    lore_folders = [x for x in lore_raw.split(",") if x.strip()] if isinstance(lore_raw, str) else (lore_raw or [])
-    lore_text = _load_lore_text(lore_folders)
     history_text = "\n".join(f"{m.persona_name}: {m.content}" for m in recent)
 
     if mode == "character":
-        pname = cfg.get("persona", "AI")
+        pname = cfg.get("persona","AI")
         persona_obj = db.query(Persona).filter(Persona.name == pname).first()
         char_desc = (persona_obj.description or "") if persona_obj else ""
-        instructions = (persona_obj.ai_instructions or "") if persona_obj else ""
         system = f"You are {pname} in this collaborative story. Stay fully in character. Do not acknowledge being an AI. Respond as {pname} in first person, one or two paragraphs at most."
         if char_desc: system += f"\n\nCharacter description:\n{char_desc}"
-        if instructions: system += f"\n\nAdditional instructions:\n{instructions}"
     else:
-        room_mode = (room.info or {}).get("mode", "general")
-        system = _DM_PROMPTS.get(room_mode, _DM_PROMPTS["general"])
-        
+        system = DM_MODE
+
     msgs = [{"role": "system", "content": system}]
     ctx_parts = []
     if world: ctx_parts.append(f"[WORLD]\n{world}")
-    if lore_text: ctx_parts.append(f"[LORE]\n{lore_text}")
     if scenario: ctx_parts.append(f"[SCENARIO]\n{scenario}")
     if summary: ctx_parts.append(f"[PRIOR EVENTS]\n{summary}")
     if ctx_parts: msgs += [{"role":"user","content":"\n\n".join(ctx_parts)+"\n\n[BEGIN]"}, {"role":"assistant","content":"Understood, I am ready."}]
@@ -134,6 +101,8 @@ async def _generate(cfg: dict, messages: list) -> str:
     if not model: print("[rp_ai] no model configured"); return ""
     async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10.0, read=300.0, write=10.0, pool=10.0)) as c:
         r = await c.post(url, json={"model":model,"messages":messages,"stream":False,"options":{"num_predict":256,"temperature":0.85,"top_p":0.9}})
+        print ("********", r)
+        print ("****2***", r.json())
         if r.status_code == 200: return r.json().get("message",{}).get("content","").strip()
         print(f"[rp_ai] ollama error {r.status_code}: {r.text[:200]}")
     return ""
@@ -168,7 +137,7 @@ def _ai_bubble(msg: Message, pname: str) -> str:
 async def _post_message(room_id: str, pname: str, content: str, db):
     msg = Message(room_id=room_id, user_name=_AI_USER, persona_name=pname, content=content)
     db.add(msg); db.commit(); db.refresh(msg)
-    await WS.broadcast(f'<div id="cm-msgs-{room_id}" hx-swap-oob="beforeend">{_ai_bubble(msg, pname)}</div>')
+    await _ws.broadcast(f'<div id="cm-msgs-{room_id}" hx-swap-oob="beforeend">{_ai_bubble(msg, pname)}</div>')
 
 # --- Public Hook ---
 
@@ -202,7 +171,6 @@ def _get_room_or_403(room_id: str, user, db):
 
 @router.get("/settings/{room_id}", response_class=HTMLResponse)
 async def ai_settings(room_id: str, request: Request):
-    if not ai_server_enabled(): return HTMLResponse("")
     db = SessionLocal()
     try:
         room, err = _get_room_or_403(room_id, request.state.user, db)
@@ -231,9 +199,8 @@ async def ai_settings(room_id: str, request: Request):
 </form></div>""")
     finally: db.close()
 
-@router.get("/settings/{room_id}", response_class=HTMLResponse)
-async def ai_settings(room_id: str, request: Request):
-    if not ai_server_enabled(): return HTMLResponse("<div class='glass rp-ui-modal' style='padding:1.5rem'>AI features are currently disabled server-wide.</div>")
+@router.post("/settings/{room_id}", response_class=HTMLResponse)
+async def ai_settings_save(room_id: str, request: Request):
     db = SessionLocal()
     try:
         room, err = _get_room_or_403(room_id, request.state.user, db)
@@ -248,7 +215,6 @@ async def ai_settings(room_id: str, request: Request):
 
 @router.post("/trigger/{room_id}", response_class=HTMLResponse)
 async def ai_trigger_now(room_id: str, request: Request):
-    if not ai_server_enabled(): return HTMLResponse("")
     db = SessionLocal()
     try:
         room, err = _get_room_or_403(room_id, request.state.user, db)
@@ -259,7 +225,6 @@ async def ai_trigger_now(room_id: str, request: Request):
 
 @router.post("/clear_history/{room_id}", response_class=HTMLResponse)
 async def ai_clear_history(room_id: str, request: Request):
-    if not ai_server_enabled(): return HTMLResponse("")
     db = SessionLocal()
     try:
         room, err = _get_room_or_403(room_id, request.state.user, db)
@@ -270,7 +235,6 @@ async def ai_clear_history(room_id: str, request: Request):
 
 @router.get("/toolbar/{room_id}", response_class=HTMLResponse)
 async def ai_toolbar(room_id: str, request: Request):
-    if not ai_server_enabled(): return HTMLResponse("")
     db = SessionLocal()
     try:
         room = db.get(Room, room_id)

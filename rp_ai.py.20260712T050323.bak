@@ -22,25 +22,7 @@ _DEFAULT = {"mode": "off", "persona": "", "dm_persona": "DM",
             "trigger": "every_n", "trigger_value": 3, "trigger_count": 0,
             "scenario": "", "history_summary": "", "history_depth": 20}
 
-_DM_PROMPTS = {
-    "general": "You are the Narrator for this collaborative story. Create engaging scene developments: describe environments, introduce events, and voice minor NPCs briefly. Do not play named characters already present - you are facilitating a story, not directly playing the established characters. Be concise: one or two paragraphs, then stop and leave room for the players to respond.",
-    "otome": """[Role]
-You are the Atmospheric Narrator facilitating a slice-of-life rom>
-
-[Objective]
-Manage the environment, sensory details, and minor background cha>
-
-[Directives]
-* Strict Boundary: You must never write dialogue, internal though>
-* Environmental Storytelling: Focus on the mood. Describe changes>
-* NPC Management: Control minor NPCs (e.g., baristas, coworkers, >
-* Conciseness: Keep your descriptions brief. Set the immediate sc>
-""",
-    "ttrpg": "You are the Dungeon Master for this tabletop-style story. Describe environments, adjudicate the outcomes of stated actions, control NPCs and monsters, and drive the plot forward when appropriate, including initiating combat, presenting choices, and introducing complications. Do not narrate actions or dialogue for the player characters themselves. Be concise but give players clear information to act on.",
-}
-
 DM_MODE = "You are the Narrator for this collaborative story. Create engaging scene developments: describe environments, introduce events, voice NPCs briefly. Do not play named characters already present, you are facilitating a story by creating scenarios not directly playing. Be concise, one or two paragraphs."
-
 
 #"You are the Dungeon Master/Narrator for this collaborative story. Create engaging scene developments: describe environments, introduce events, voice NPCs briefly. Do not play named characters already present. Be concise, one or two paragraphs."
 
@@ -113,9 +95,8 @@ def _build_messages(room: Room, cfg: dict, db) -> list:
         if char_desc: system += f"\n\nCharacter description:\n{char_desc}"
         if instructions: system += f"\n\nAdditional instructions:\n{instructions}"
     else:
-        room_mode = (room.info or {}).get("mode", "general")
-        system = _DM_PROMPTS.get(room_mode, _DM_PROMPTS["general"])
-        
+        system = DM_MODE
+
     msgs = [{"role": "system", "content": system}]
     ctx_parts = []
     if world: ctx_parts.append(f"[WORLD]\n{world}")

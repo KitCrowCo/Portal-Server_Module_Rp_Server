@@ -30,13 +30,13 @@ except ImportError:
 MODULE_META = {"label": "RP Server", "icon": "&#x1F4AC;", "description": "Collaborative roleplay, TTRPG, and chat rooms", "persistence": "user"}
 
 _P = "/module/rp_server"
+RP_ASSET_URL = "/modules/_assets_rp_server"   # requires modules/rp_server/static/ to exist in source (triggers the mount in main.py)
 RP_ASSET_DIR = pathlib.Path("./data/rp_server/static")
-RP_ASSET_URL = "/module/assets/rp_server"
 
-ENV, IM, UI, BI, CM, FM, RoomSettingsGroup = {}, None, None, None, None, None, None
+ENV, IM, UI, BI, CM, FM = {}, None, None, None, None, None
 
 def init_module(environment: dict):
-    global ENV, IM, UI, BI, CM, FM, _RoomSettingsGroup
+    global ENV, IM, UI, BI, CM, FM
     ENV.update(environment)
     UI = ENV["templates"].env.globals.get("UI")
     BI = ENV["tools"]["built_ins"]
@@ -45,27 +45,6 @@ def init_module(environment: dict):
     CM = BI.ChatManager(namespace="rp_server", base_url=_P, view_style="bubble", allow_edit=False, allow_delete=False, allow_copy=True, show_avatars=True, show_info=False, markdown_mode="extended", pin_enabled=True, input_enabled=False, branch_id=IM.branch_id, nesting_level=1)
     _register_intents()
     if _AI_INSTALLED: _ai_init_module(environment)
-    _tools_init_module({**environment, "IM": IM})
-    
-   
-    class RoomSettingsGroup(BI.SettingsGroup):
-        """Reuses SettingsGroup's field rendering, but persists to Room.info (DB) instead of a JSON file."""
-        def __init__(self, room, db):
-            fields = [BI.SettingField("mode", "Mode", "select", "general", options=[("general","General Chat"),("otome","Visual Novel"),("ttrpg","TTRPG / D&D")]),
-                      BI.SettingField("display_mode", "Display Names", "select", "persona", options=[("persona","Persona name"),("username","Username"),("both","Both")]),
-                      BI.SettingField("show_timestamp", "Show Timestamps", "checkbox", True),
-                      BI.SettingField("world", "Setting / World (short name)", "text", ""),
-                      BI.SettingField("world_detail", "World Detail", "textarea", ""),
-                      BI.SettingField("lore_folders", "Lore Folders (wiki paths, comma-separated)", "text", "", hint="Relative to the wiki root, e.g. 'worlds/faerun, characters'. Stackable - both this panel and AI context (if enabled) pull markdown from every listed folder.")]
-            super().__init__("room", "Room Settings", fields, json_path="unused")
-            self.room, self.db = room, db
-        def load(self): return {f.name: (self.room.info or {}).get(f.name, f.default) for f in self.fields}
-        def save(self, form_data):
-            data = dict(self.room.info or {})
-            for f in self.fields: data[f.name] = bool(form_data.get(f.name)) if f.type == "checkbox" else (form_data.get(f.name) if form_data.get(f.name) is not None else f.default)
-            self.room.info = data; flag_modified(self.room, "info"); self.db.commit()
-    _RoomSettingsGroup = RoomSettingsGroup
-
     print("RP Server: environment loaded.")
 
 def get_db():
@@ -182,6 +161,23 @@ def _persona_edit_modal(p: Persona) -> str:
                    <button class="ui-btn" style="color:#ff6b6b;border-color:#ff6b6b;font-size:.8rem;width:100%;" hx-post="/im/in" hx-vals='{{"type":"rp_persona_delete","persona_id":"{p.id}","branch":"{IM.branch_id}","lvl":1}}' hx-confirm="Delete this persona?" hx-swap="none">Delete Persona</button>
                </div>"""
     return UI.modal("rp-persona-edit", f"Persona: {UI.escape(p.name)}", body)
+
+class _RoomSettingsGroup(BI.SettingsGroup):
+    """Reuses SettingsGroup's field rendering, but persists to Room.info (DB) instead of a JSON file."""
+    def __init__(self, room, db):
+        fields = [BI.SettingField("mode", "Mode", "select", "general", options=[("general","General Chat"),("otome","Visual Novel"),("ttrpg","TTRPG / D&D")]),
+                  BI.SettingField("display_mode", "Display Names", "select", "persona", options=[("persona","Persona name"),("username","Username"),("both","Both")]),
+                  BI.SettingField("show_timestamp", "Show Timestamps", "checkbox", True),
+                  BI.SettingField("world", "Setting / World (short name)", "text", ""),
+                  BI.SettingField("world_detail", "World Detail", "textarea", ""),
+                  BI.SettingField("lore_folders", "Lore Folders (wiki paths, comma-separated)", "text", "", hint="Relative to the wiki root, e.g. 'worlds/faerun, characters'. Stackable - both this panel and AI context (if enabled) pull markdown from every listed folder.")]
+        super().__init__("room", "Room Settings", fields, json_path="unused")
+        self.room, self.db = room, db
+    def load(self): return {f.name: (self.room.info or {}).get(f.name, f.default) for f in self.fields}
+    def save(self, form_data):
+        data = dict(self.room.info or {})
+        for f in self.fields: data[f.name] = bool(form_data.get(f.name)) if f.type == "checkbox" else (form_data.get(f.name) if form_data.get(f.name) is not None else f.default)
+        self.room.info = data; flag_modified(self.room, "info"); self.db.commit()
 
 def _user_options_group(username) -> "BI.SettingsGroup": return BI.SettingsGroup("options", "Options", [BI.SettingField("auto_scroll", "Auto-scroll on new message", "checkbox", False)], json_path=f"./data/rp_server/user_options/{username}.json")
 
@@ -450,7 +446,7 @@ async def _h_options_save(request, payload, imr):
         return imr.status("Settings saved.", "ok")
     finally: db.close()
 
-# --- CSS / JS ---
+# --- CSS / JS (unchanged from the working version, one typo fixed) ---
 
 RP_CSS = """
 :root { --rp-item-gap: 0.15rem; --rp-avatar-size: 2rem; --rp-sidebar-padding: 0.15rem; }
@@ -458,21 +454,19 @@ RP_CSS = """
 .rp-section-label {flex-shrink: 0; padding: 0.5rem 0.2rem 0.2rem 0.2rem; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; opacity: 0.7; letter-spacing:.06rem;color:var(--text_muted);}
 .fixed-shrink {flex-shrink: 0 !important;}
 .rp-ui-modal {padding: 1.5rem; min-width: 20rem; max-width: 90vw; max-height: 85vh; position: relative; border-radius: var(--radius); overflow-y:auto;}
-#rp-msg-input {field-sizing: content; flex:1;background:var(--bg); color:var(--text);border:var(--border-thick) solid var(--border);border-radius:var(--radius);padding:0.4rem;font-family:var(--font-main); font-size:var(--font-size); resize:none; overflow-y:auto; max-height:25vh; line-height:1.4;}
+#rp-msg-input {field-sizing: content; flex:1;background:var(--bg); color:var(--text);border:var(--border-thick) solid var(--border);border-radius:var(--radius);padding:0.4rem;font-family:var(--font-main);font-size:var(--font-size); resize:none; overflow-y:auto; max-height:25vh; line-height:1.4;}
 #rp-msg-input:focus{outline:none; border-color:var(--accent);}
 .input-row { display: flex; gap: 0.4rem; align-items: center; width: 100%; }
 .toolbar-header { padding: 0.4rem 0.6rem; border-bottom: var(--border-thick) solid var(--border); display: flex; justify-content: space-between; align-items: center; gap:.4rem; flex-shrink:0; background:var(--bg_panel);}
-.rp-persona-item{display:flex; align-items:center; justify-content:space-between; padding:.2rem .5rem; font-size:.8rem; border-bottom:var(--border-thick) solid var(--border); cursor:pointer;}
+.rp-persona-item{display:flex; align-items:center; justify-content:space-between; padding:.28rem .5rem; font-size:.8rem; border-bottom:var(--border-thick) solid var(--border); cursor:pointer;}
 .rp-persona-item:hover,.rp-persona-item.active{background:var(--accent_dim);}
 #rp-modal { display:none; position:fixed; inset:0; z-index:2000; align-items:center; justify-content:center; background:rgba(0,0,0,.55); }
 #rp-modal:not(:empty) { display:flex; }
-.rp-menu-btn { display:flex; align-items:center; gap:.4rem; width:100%; text-align:left; padding:.45rem .6rem; font-size:.8rem; justify-content:flex-start; }
+.rp-menu-btn { display:flex; align-items:center; gap:.4rem; width:100%; text-align:left; padding:.45rem .6rem; font-size:.82rem; justify-content:flex-start; }
 .cm-meta{flex-wrap:nowrap;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-#rp-scroll-btn{position:absolute;bottom:3.5rem; right:.7rem; z-index:100; opacity:.7;border-radius:50%; width:2rem;height:2rem;padding:0;display:flex;align-items:center;justify-content:center;}
+#rp-scroll-btn{position:absolute;bottom:3.5rem;right:.7rem;z-index:100;opacity:.7;border-radius:50%;width:2rem;height:2rem;padding:0;display:flex;align-items:center;justify-content:center;}
 #rp-scroll-btn:hover{opacity:1;}
 details.rp-expand textarea{field-sizing:content;min-height:4rem;}
-.rp-room-item { display:flex; justify-content:space-between; align-items:center; padding:.3rem .5rem; font-size:.8rem; border-bottom:var(--border-thick) solid var(--border); cursor:pointer; }
-.rp-room-item:hover, .rp-room-item.active { background:var(--accent_dim); }
 """
 
 RP_SCRIPT = """
@@ -497,7 +491,7 @@ async def ui_index(request: Request, db: Session = Depends(get_db)):
     persona = sess.current_persona or username
     room_obj = db.get(Room, room_id)
     room_display = UI.escape(room_label(room_obj)) if room_obj else UI.escape(room_id)
-    lvl = 1 #int(request.headers.get("x-shell-level", 1))
+    lvl = int(request.headers.get("x-shell-level", 1))
     ai_available = _AI_INSTALLED and ai_server_enabled()
 
     LeftBarContent = f"""<div style="display:flex; flex-direction:column; height:100%; overflow:hidden;">
@@ -547,7 +541,7 @@ async def ui_index(request: Request, db: Session = Depends(get_db)):
                         </div>"""
 
     content = f"""<div id="rp-stage" hx-get="{_P}/stage" hx-trigger="load" hx-target="this" hx-swap="innerHTML" style="height:100%; width:100%; background-size:cover; background-position:center; display:flex; align-items:center; justify-content:center;"></div>
-                  <div id="rp-modal" hx-on:closeModal="this.innerHTML=''"></div>"""
+                  <div id="rp-modal" hx-on:closeModal="this.innerHTML=''" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:2000;"></div>"""
     theme_diff = await ENV["resolve_theme"](request, module_ns="rp_server")
     return ENV["templates"].TemplateResponse(name="base.html", request=request, context={"request": request, "user": user, "nesting_level": lvl,
         "toolbars": {"left": UI.toolbar(side="left", content=LeftBarContent, size="20rem", overlay=True, nesting_level=lvl),
@@ -604,7 +598,7 @@ async def manage_room(request: Request, db: Session = Depends(get_db)):
     if room.owner != username and role not in ("admin", "moderator"): return HTMLResponse('<div style="padding:1rem;opacity:0.6;">You do not manage this room.</div>')
     group = _RoomSettingsGroup(room, db)
     member_html = _members_html(room_id, db.query(RoomMembership).filter_by(room_id=room_id).all())
-    ai_link = f"""<button class="ui-btn" style="width:100%;margin-top:.8rem;" hx-get="{_P}/ai/room/{room_id}/settings" hx-target="#rp-modal" hx-swap="innerHTML">&#x1F916; AI Settings</button>""" if (_AI_INSTALLED and ai_server_enabled()) else ""
+    ai_link = f'<button class="ui-btn" style="width:100%;margin-top:.8rem;" hx-get="{_P}/ai/room/{room_id}/settings" hx-target="#rp-modal" hx-swap="innerHTML">&#x1F916; AI Settings</button>' if (_AI_INSTALLED and ai_server_enabled()) else ""
     body = f"""<form hx-post="/im/in" hx-swap="none" style="display:flex;flex-direction:column;gap:.4rem;">
                    <input type="hidden" name="type" value="rp_room_settings_save"><input type="hidden" name="branch" value="{IM.branch_id}"><input type="hidden" name="lvl" value="1">
                    <input type="hidden" name="room_id" value="{room_id}">
@@ -630,7 +624,7 @@ async def manage_room(request: Request, db: Session = Depends(get_db)):
                        <input type="file" name="bgfile" accept="image/*" style="flex:1;font-size:.75rem;">
                        <button class="ui-btn" style="font-size:.75rem;">Upload</button>
                    </form>
-                   {f'''<button class="ui-btn" style="margin-top:.3rem;color:#ff6b6b;" hx-post="/im/in" hx-vals='{{"type":"rp_room_bg_clear","room_id":"{room_id}","branch":"{IM.branch_id}","lvl":1}}' hx-swap="none">Remove Background</button>''' if room.background else ''}
+                   {f'<button class="ui-btn" style="margin-top:.3rem;color:#ff6b6b;" hx-post="/im/in" hx-vals=\'{{"type":"rp_room_bg_clear","room_id":"{room_id}","branch":"{IM.branch_id}","lvl":1}}\' hx-swap="none">Remove Background</button>' if room.background else ""}
                </div>
 			   {ai_link}"""
     return HTMLResponse(UI.modal("rp-room-settings", UI.escape(room_label(room)), body))

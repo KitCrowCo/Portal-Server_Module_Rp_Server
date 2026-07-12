@@ -13,6 +13,8 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm.attributes import flag_modified
 from .models import Room, Persona, Message, UserSession, SessionLocal
 
+#from backend.ws_manager import manager as _ws
+
 ENV = {}
 _AI_CONFIG_PATH = pathlib.Path("./data/rp_server/ai_server_config.json")
 LORE_ROOT = pathlib.Path("./data/_common")
@@ -22,34 +24,28 @@ _DEFAULT = {"mode": "off", "persona": "", "dm_persona": "DM",
             "trigger": "every_n", "trigger_value": 3, "trigger_count": 0,
             "scenario": "", "history_summary": "", "history_depth": 20}
 
-_DM_PROMPTS = {
-    "general": "You are the Narrator for this collaborative story. Create engaging scene developments: describe environments, introduce events, and voice minor NPCs briefly. Do not play named characters already present - you are facilitating a story, not directly playing the established characters. Be concise: one or two paragraphs, then stop and leave room for the players to respond.",
-    "otome": """[Role]
-You are the Atmospheric Narrator facilitating a slice-of-life rom>
+DM_MODE = """[Role]
+You are the Atmospheric Narrator facilitating a slice-of-life romance story between two main characters. Your purpose is to set the stage and provide ambiance, allowing the human writers to drive the relationship and plot.
 
 [Objective]
-Manage the environment, sensory details, and minor background cha>
+Manage the environment, sensory details, and minor background characters to create a lived-in, intimate world that reacts to the protagonists without overshadowing them.
 
 [Directives]
-* Strict Boundary: You must never write dialogue, internal though>
-* Environmental Storytelling: Focus on the mood. Describe changes>
-* NPC Management: Control minor NPCs (e.g., baristas, coworkers, >
-* Conciseness: Keep your descriptions brief. Set the immediate sc>
-""",
-    "ttrpg": "You are the Dungeon Master for this tabletop-style story. Describe environments, adjudicate the outcomes of stated actions, control NPCs and monsters, and drive the plot forward when appropriate, including initiating combat, presenting choices, and introducing complications. Do not narrate actions or dialogue for the player characters themselves. Be concise but give players clear information to act on.",
-}
+* Strict Boundary: You must never write dialogue, internal thoughts, or actions for the two main characters. Let them speak and act for themselves.
+* Environmental Storytelling: Focus on the mood. Describe changes in weather, the lighting in a room, background noise, and the passage of time to enhance the emotional tone of the scene.
+* NPC Management: Control minor NPCs (e.g., baristas, coworkers, pets, passing strangers) to create natural social dynamics, gentle interruptions, or situational prompts that give the main characters something to react to.
+* Conciseness: Keep your descriptions brief. Set the immediate scene, resolve any background actions, and then stop generating. Always leave the narrative open for the protagonists to engage with each other.
+"""
 
-DM_MODE = "You are the Narrator for this collaborative story. Create engaging scene developments: describe environments, introduce events, voice NPCs briefly. Do not play named characters already present, you are facilitating a story by creating scenarios not directly playing. Be concise, one or two paragraphs."
-
+#"You are the Narrator for this collaborative story. Create engaging scene developments: describe environments, introduce events, voice NPCs briefly. Do not play named characters already present, you are facilitating a story by creating scenarios not directly playing. Be concise, one or two paragraphs."
 
 #"You are the Dungeon Master/Narrator for this collaborative story. Create engaging scene developments: describe environments, introduce events, voice NPCs briefly. Do not play named characters already present. Be concise, one or two paragraphs."
 
 router = APIRouter()
 
 def init_module(env: dict):
-    global ENV, WS
+    global ENV
     ENV.update(env)
-    WS = env["ws"]
 
 def ai_server_enabled() -> bool:
     try: return json.loads(_AI_CONFIG_PATH.read_text()).get("enabled", True) if _AI_CONFIG_PATH.exists() else True
@@ -113,9 +109,8 @@ def _build_messages(room: Room, cfg: dict, db) -> list:
         if char_desc: system += f"\n\nCharacter description:\n{char_desc}"
         if instructions: system += f"\n\nAdditional instructions:\n{instructions}"
     else:
-        room_mode = (room.info or {}).get("mode", "general")
-        system = _DM_PROMPTS.get(room_mode, _DM_PROMPTS["general"])
-        
+        system = DM_MODE
+
     msgs = [{"role": "system", "content": system}]
     ctx_parts = []
     if world: ctx_parts.append(f"[WORLD]\n{world}")

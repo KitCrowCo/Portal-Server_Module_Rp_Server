@@ -30,8 +30,8 @@ except ImportError:
 MODULE_META = {"label": "RP Server", "icon": "&#x1F4AC;", "description": "Collaborative roleplay, TTRPG, and chat rooms", "persistence": "user"}
 
 _P = "/module/rp_server"
+RP_ASSET_URL = "/modules/_assets_rp_server"
 RP_ASSET_DIR = pathlib.Path("./data/rp_server/static")
-RP_ASSET_URL = "/module/assets/rp_server"
 
 ENV, IM, UI, BI, CM, FM, RoomSettingsGroup = {}, None, None, None, None, None, None
 
@@ -471,8 +471,6 @@ RP_CSS = """
 #rp-scroll-btn{position:absolute;bottom:3.5rem; right:.7rem; z-index:100; opacity:.7;border-radius:50%; width:2rem;height:2rem;padding:0;display:flex;align-items:center;justify-content:center;}
 #rp-scroll-btn:hover{opacity:1;}
 details.rp-expand textarea{field-sizing:content;min-height:4rem;}
-.rp-room-item { display:flex; justify-content:space-between; align-items:center; padding:.3rem .5rem; font-size:.8rem; border-bottom:var(--border-thick) solid var(--border); cursor:pointer; }
-.rp-room-item:hover, .rp-room-item.active { background:var(--accent_dim); }
 """
 
 RP_SCRIPT = """
@@ -497,7 +495,7 @@ async def ui_index(request: Request, db: Session = Depends(get_db)):
     persona = sess.current_persona or username
     room_obj = db.get(Room, room_id)
     room_display = UI.escape(room_label(room_obj)) if room_obj else UI.escape(room_id)
-    lvl = 1 #int(request.headers.get("x-shell-level", 1))
+    lvl = int(request.headers.get("x-shell-level", 1))
     ai_available = _AI_INSTALLED and ai_server_enabled()
 
     LeftBarContent = f"""<div style="display:flex; flex-direction:column; height:100%; overflow:hidden;">
@@ -547,7 +545,7 @@ async def ui_index(request: Request, db: Session = Depends(get_db)):
                         </div>"""
 
     content = f"""<div id="rp-stage" hx-get="{_P}/stage" hx-trigger="load" hx-target="this" hx-swap="innerHTML" style="height:100%; width:100%; background-size:cover; background-position:center; display:flex; align-items:center; justify-content:center;"></div>
-                  <div id="rp-modal" hx-on:closeModal="this.innerHTML=''"></div>"""
+                  <div id="rp-modal" hx-on:closeModal="this.innerHTML=''" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:2000;"></div>"""
     theme_diff = await ENV["resolve_theme"](request, module_ns="rp_server")
     return ENV["templates"].TemplateResponse(name="base.html", request=request, context={"request": request, "user": user, "nesting_level": lvl,
         "toolbars": {"left": UI.toolbar(side="left", content=LeftBarContent, size="20rem", overlay=True, nesting_level=lvl),

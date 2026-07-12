@@ -24,18 +24,7 @@ _DEFAULT = {"mode": "off", "persona": "", "dm_persona": "DM",
 
 _DM_PROMPTS = {
     "general": "You are the Narrator for this collaborative story. Create engaging scene developments: describe environments, introduce events, and voice minor NPCs briefly. Do not play named characters already present - you are facilitating a story, not directly playing the established characters. Be concise: one or two paragraphs, then stop and leave room for the players to respond.",
-    "otome": """[Role]
-You are the Atmospheric Narrator facilitating a slice-of-life rom>
-
-[Objective]
-Manage the environment, sensory details, and minor background cha>
-
-[Directives]
-* Strict Boundary: You must never write dialogue, internal though>
-* Environmental Storytelling: Focus on the mood. Describe changes>
-* NPC Management: Control minor NPCs (e.g., baristas, coworkers, >
-* Conciseness: Keep your descriptions brief. Set the immediate sc>
-""",
+    "otome": DM_MODE,   # the original atmospheric-narrator/romance-focused text - kept as the Visual Novel flavor specifically, since it fits that mode's tone
     "ttrpg": "You are the Dungeon Master for this tabletop-style story. Describe environments, adjudicate the outcomes of stated actions, control NPCs and monsters, and drive the plot forward when appropriate, including initiating combat, presenting choices, and introducing complications. Do not narrate actions or dialogue for the player characters themselves. Be concise but give players clear information to act on.",
 }
 
