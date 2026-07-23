@@ -46,8 +46,7 @@ def init_module(environment: dict):
     _register_intents()
     if _AI_INSTALLED: _ai_init_module(environment)
     _tools_init_module({**environment, "IM": IM})
-    
-   
+
     class RoomSettingsGroup(BI.SettingsGroup):
         """Reuses SettingsGroup's field rendering, but persists to Room.info (DB) instead of a JSON file."""
         def __init__(self, room, db):
