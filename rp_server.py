@@ -44,7 +44,7 @@ def init_module(environment: dict):
     FM = BI.FileManager(RP_ASSET_DIR)
     CM = BI.ChatManager(namespace="rp_server", base_url=_P, view_style="bubble", allow_edit=False, allow_delete=False, allow_copy=True, show_avatars=True, show_info=False, markdown_mode="extended", pin_enabled=True, input_enabled=False, branch_id=IM.branch_id, nesting_level=1)
     _register_intents()
-    if _AI_INSTALLED: _ai_init_module(environment)
+    if _AI_INSTALLED: _ai_init_module({**environment, "IM": IM})
     _tools_init_module({**environment, "IM": IM})
 
     class RoomSettingsGroup(BI.SettingsGroup):

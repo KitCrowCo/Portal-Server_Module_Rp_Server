@@ -14,6 +14,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from .models import Room, Persona, Message, UserSession, SessionLocal
 
 ENV = {}
+IM = None
 _AI_CONFIG_PATH = pathlib.Path("./data/rp_server/ai_server_config.json")
 LORE_ROOT = pathlib.Path("./data/_common")
 _AI_USER = "system_ai"
@@ -47,9 +48,11 @@ DM_MODE = "You are the Narrator for this collaborative story. Create engaging sc
 router = APIRouter()
 
 def init_module(env: dict):
-    global ENV, WS
+    global ENV, WS, IM
     ENV.update(env)
     WS = env["ws"]
+    IM = env.get("IM")
+    IM.scripts["rp_ai_settings_save"] = [_h_ai_settings_save]
 
 def ai_server_enabled() -> bool:
     try: return json.loads(_AI_CONFIG_PATH.read_text()).get("enabled", True) if _AI_CONFIG_PATH.exists() else True
@@ -60,9 +63,7 @@ def set_ai_server_enabled(val: bool):
     _AI_CONFIG_PATH.write_text(json.dumps({"enabled": bool(val)}))
 
 def _load_lore_text(folders: list, max_chars: int = 4000) -> str:
-    """Simple organizer, not a retrieval system: concatenates markdown files from the
-    listed wiki-relative folders, truncated to a budget. Anything smarter (indexing,
-    relevance ranking) belongs in a dedicated AI tools module, not here."""
+    """Simple organizer, not a retrieval system: concatenates markdown files from the listed wiki-relative folders, truncated to a budget. Anything smarter (indexing, relevance ranking) belongs in a dedicated AI tools module, not here."""
     if not folders: return ""
     chunks = []
     for folder in folders:
@@ -115,7 +116,7 @@ def _build_messages(room: Room, cfg: dict, db) -> list:
     else:
         room_mode = (room.info or {}).get("mode", "general")
         system = _DM_PROMPTS.get(room_mode, _DM_PROMPTS["general"])
-        
+
     msgs = [{"role": "system", "content": system}]
     ctx_parts = []
     if world: ctx_parts.append(f"[WORLD]\n{world}")
@@ -214,25 +215,33 @@ async def ai_settings(room_id: str, request: Request):
         t_opts = "".join(f'<option value="{t}" {"selected" if t==cfg.get("trigger","every_n") else ""}>{l}</option>' for t,l in [("every_n","Every N messages"),("probability","Probability (0.0-1.0)"),("keyword","Keyword in message"),("manual","Manual only (@AI, @DM, @GM)")])
         return HTMLResponse(f"""<div class="glass rp-ui-modal"><button style="position:absolute;top:.5rem;right:.5rem;background:none;border:none;cursor:pointer;font-size:1rem;color:var(--text_muted)" onclick="document.getElementById('rp-modal').innerHTML=''">&#x2715;</button>
 <h3 style="margin-top:0;color:var(--accent)">AI Settings - {_esc(room.title or room_id)}</h3>
-<form hx-post="/module/rp_server/ai/settings/{_esc(room_id)}" hx-target="#rp-modal" hx-swap="innerHTML" style="display:flex;flex-direction:column;gap:.6rem">
-    <label style="font-size:.75rem;color:var(--text_muted)">Mode<select name="mode" class="module-select" style="width:100%;margin-top:.2rem">{m_opts}</select></label>
-    <label style="font-size:.75rem;color:var(--text_muted)">Character Persona (character mode)<select name="persona" class="module-select" style="width:100%;margin-top:.2rem">{p_opts}</select></label>
-    <label style="font-size:.75rem;color:var(--text_muted)">DM Name (DM mode)<input type="text" name="dm_persona" value="{_esc(cfg.get("dm_persona","DM"))}" class="module-select" style="width:100%;margin-top:.2rem"></label>
-    <label style="font-size:.75rem;color:var(--text_muted)">Ollama URL<input type="text" name="ollama_url" value="{_esc(cfg.get("ollama_url","http://localhost:11434"))}" class="module-select" style="width:100%;margin-top:.2rem"></label>
-    <label style="font-size:.75rem;color:var(--text_muted)">Model<input type="text" name="model" value="{_esc(cfg.get("model",""))}" class="module-select" style="width:100%;margin-top:.2rem" placeholder="e.g. llama3:8b, mistral"></label>
-    <label style="font-size:.75rem;color:var(--text_muted)">Trigger<select name="trigger" class="module-select" style="width:100%;margin-top:.2rem">{t_opts}</select></label>
-    <label style="font-size:.75rem;color:var(--text_muted)">Trigger value (N, prob 0-1, or comma keywords)<input type="text" name="trigger_value" value="{_esc(str(cfg.get("trigger_value","3")))}" class="module-select" style="width:100%;margin-top:.2rem"></label>
-    <label style="font-size:.75rem;color:var(--text_muted)">Scenario Block<textarea name="scenario" class="module-select" rows="3" style="width:100%;margin-top:.2rem;font-size:.8rem;resize:vertical">{_esc(cfg.get("scenario",""))}</textarea></label>
-    <div style="display:flex;gap:.5rem">
-        <button type="submit" class="button" style="flex:1;margin-top:0">Save</button>
-        <button type="button" class="button" style="margin-top:0;background:none;border-color:var(--accent)" hx-post="/module/rp_server/ai/trigger/{_esc(room_id)}" hx-target="#rp-modal" hx-swap="innerHTML">Trigger Now</button>
-        <button type="button" class="button" style="margin-top:0;background:none;border-color:#ff9a3c;color:#ff9a3c" hx-post="/module/rp_server/ai/clear_history/{_esc(room_id)}" hx-swap="none" hx-confirm="Clear AI history summary?">Clear History</button>
-    </div>
+<form hx-post="/im/in" hx-target="body" hx-swap="none" style="display:flex;flex-direction:column;gap:.6rem">
+    <input type="hidden" name="type" value="rp_ai_settings_save">
+    <input type="hidden" name="branch" value="{IM.branch_id}">
+    <input type="hidden" name="lvl" value="1">
+    <input type="hidden" name="room_id" value="{_esc(room_id)}">
+    
+
 </form></div>""")
     finally: db.close()
 
-@router.get("/settings/{room_id}", response_class=HTMLResponse)
-async def ai_settings(room_id: str, request: Request):
+# <form hx-post="/module/rp_server/ai/settings/{_esc(room_id)}" hx-target="#rp-modal" hx-swap="innerHTML" style="display:flex;flex-direction:column;gap:.6rem">
+#     <label style="font-size:.75rem;color:var(--text_muted)">Mode<select name="mode" class="module-select" style="width:100%;margin-top:.2rem">{m_opts}</select></label>
+#     <label style="font-size:.75rem;color:var(--text_muted)">Character Persona (character mode)<select name="persona" class="module-select" style="width:100%;margin-top:.2rem">{p_opts}</select></label>
+#     <label style="font-size:.75rem;color:var(--text_muted)">DM Name (DM mode)<input type="text" name="dm_persona" value="{_esc(cfg.get("dm_persona","DM"))}" class="module-select" style="width:100%;margin-top:.2rem"></label>
+#     <label style="font-size:.75rem;color:var(--text_muted)">Ollama URL<input type="text" name="ollama_url" value="{_esc(cfg.get("ollama_url","http://localhost:11434"))}" class="module-select" style="width:100%;margin-top:.2rem"></label>
+#     <label style="font-size:.75rem;color:var(--text_muted)">Model<input type="text" name="model" value="{_esc(cfg.get("model",""))}" class="module-select" style="width:100%;margin-top:.2rem" placeholder="e.g. llama3:8b, mistral"></label>
+#     <label style="font-size:.75rem;color:var(--text_muted)">Trigger<select name="trigger" class="module-select" style="width:100%;margin-top:.2rem">{t_opts}</select></label>
+#     <label style="font-size:.75rem;color:var(--text_muted)">Trigger value (N, prob 0-1, or comma keywords)<input type="text" name="trigger_value" value="{_esc(str(cfg.get("trigger_value","3")))}" class="module-select" style="width:100%;margin-top:.2rem"></label>
+#     <label style="font-size:.75rem;color:var(--text_muted)">Scenario Block<textarea name="scenario" class="module-select" rows="3" style="width:100%;margin-top:.2rem;font-size:.8rem;resize:vertical">{_esc(cfg.get("scenario",""))}</textarea></label>
+#     <div style="display:flex;gap:.5rem">
+#         <button type="submit" class="button" style="flex:1;margin-top:0">Save</button>
+#         <button type="button" class="button" style="margin-top:0;background:none;border-color:var(--accent)" hx-post="/module/rp_server/ai/trigger/{_esc(room_id)}" hx-target="#rp-modal" hx-swap="innerHTML">Trigger Now</button>
+#         <button type="button" class="button" style="margin-top:0;background:none;border-color:#ff9a3c;color:#ff9a3c" hx-post="/module/rp_server/ai/clear_history/{_esc(room_id)}" hx-swap="none" hx-confirm="Clear AI history summary?">Clear History</button>
+#     </div>
+
+
+async def _h_ai_settings_save(request, payload, imr)
     if not ai_server_enabled(): return HTMLResponse("<div class='glass rp-ui-modal' style='padding:1.5rem'>AI features are currently disabled server-wide.</div>")
     db = SessionLocal()
     try:
@@ -243,7 +252,7 @@ async def ai_settings(room_id: str, request: Request):
             cfg[k] = form.get(k, cfg.get(k,""))
         cfg.setdefault("trigger_count",0); cfg.setdefault("history_summary","")
         _save_cfg(room, cfg, db)
-        return HTMLResponse('<div class="glass rp-ui-modal" style="padding:1.5rem"><p style="color:var(--accent)">&#x2713; AI settings saved.</p><button onclick="document.getElementById(\'rp-modal\').innerHTML=\'\'" class="button" style="margin-top:.5rem">Close</button></div>')
+        return imr.raw('<div class="glass rp-ui-modal" style="padding:1.5rem"><p style="color:var(--accent)">&#x2713; AI settings saved.</p><button onclick="document.getElementById(\'rp-modal\').innerHTML=\'\'" class="button" style="margin-top:.5rem">Close</button></div>')
     finally: db.close()
 
 @router.post("/trigger/{room_id}", response_class=HTMLResponse)
