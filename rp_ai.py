@@ -240,8 +240,7 @@ async def ai_settings(room_id: str, request: Request):
 #         <button type="button" class="button" style="margin-top:0;background:none;border-color:#ff9a3c;color:#ff9a3c" hx-post="/module/rp_server/ai/clear_history/{_esc(room_id)}" hx-swap="none" hx-confirm="Clear AI history summary?">Clear History</button>
 #     </div>
 
-
-async def _h_ai_settings_save(request, payload, imr)
+async def _h_ai_settings_save(request, payload, imr):
     if not ai_server_enabled(): return HTMLResponse("<div class='glass rp-ui-modal' style='padding:1.5rem'>AI features are currently disabled server-wide.</div>")
     db = SessionLocal()
     try:
