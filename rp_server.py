@@ -603,7 +603,7 @@ async def manage_room(request: Request, db: Session = Depends(get_db)):
     if room.owner != username and role not in ("admin", "moderator"): return HTMLResponse('<div style="padding:1rem;opacity:0.6;">You do not manage this room.</div>')
     group = _RoomSettingsGroup(room, db)
     member_html = _members_html(room_id, db.query(RoomMembership).filter_by(room_id=room_id).all())
-    ai_link = f"""<button class="ui-btn" style="width:100%;margin-top:.8rem;" hx-get="{_P}/ai/room/{room_id}/settings" hx-target="#rp-modal" hx-swap="innerHTML">&#x1F916; AI Settings</button>""" if (_AI_INSTALLED and ai_server_enabled()) else ""
+    ai_link = f"""<button class="ui-btn" style="width:100%;margin-top:.8rem;" hx-get="{_P}/ai/settings/{room_id}" hx-target="#rp-modal" hx-swap="innerHTML">&#x1F916; AI Settings</button>""" if (_AI_INSTALLED and ai_server_enabled()) else ""
     body = f"""<form hx-post="/im/in" hx-swap="none" style="display:flex;flex-direction:column;gap:.4rem;">
                    <input type="hidden" name="type" value="rp_room_settings_save"><input type="hidden" name="branch" value="{IM.branch_id}"><input type="hidden" name="lvl" value="1">
                    <input type="hidden" name="room_id" value="{room_id}">

@@ -58,7 +58,7 @@ class Persona(Base):
     ai_enabled      = Column(Boolean, default=False)
     ai_instructions = Column(Text, default="")
     info            = Column(JSON, default={}) # extensible: color, pronouns, etc.
-    
+
 class Message(Base):
     """A chat message in a room. Soft-delete via deleted flag. Edit history via edited_at."""
     __tablename__ = "messages"
@@ -114,5 +114,4 @@ def ensure_db_column(engine, table="users", column="custom_theme", ctype="JSON")
                 conn.commit()
 
 # Add new columns to existing tables safely (idempotent)    
-for table, col, ctype in [("messages", "story_time", "DATETIME"), ("rooms", "channel_id", "VARCHAR"), ("personas", "ai_instructions", "TEXT")]:
-    ensure_db_column(engine, table, col, ctype)
+for table, col, ctype in [("messages", "story_time", "DATETIME"), ("rooms", "channel_id", "VARCHAR"), ("personas", "ai_instructions", "TEXT")]: ensure_db_column(engine, table, col, ctype)
