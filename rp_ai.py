@@ -173,12 +173,15 @@ async def on_message_sent(room_id: str, msg_id: int, sender_username: str):
         cfg["history_summary"] = _compress(room, cfg, db)
         _save_cfg(room, cfg, db)
         messages = _build_messages(room, cfg, db)
+        await WS.broadcast(f'<div id="rp-ai-working-{room_id}" hx-swap-oob="innerHTML"><div class="glass" style="padding:.3rem .6rem;font-size:.7rem;color:var(--text_muted);display:flex;align-items:center;gap:.4rem"><span class="spin">&#x25CC;</span> AI is thinking&hellip;</div></div>')
         response = await _generate(cfg, messages)
+        await WS.broadcast(f'<div id="rp-ai-working-{room_id}" hx-swap-oob="innerHTML"></div>')
         if response:
             pname = cfg.get("persona","AI") if cfg.get("mode") == "character" else cfg.get("dm_persona","DM")
             await _post_message(room_id, pname, response, db)
     except Exception as e:
         print(f"[rp_ai] on_message_sent error: {e}")
+        await WS.broadcast(f'<div id="rp-ai-working-{room_id}" hx-swap-oob="innerHTML"></div>')
     finally:
         db.close()
 

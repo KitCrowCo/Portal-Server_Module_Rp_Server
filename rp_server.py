@@ -530,6 +530,7 @@ async def ui_index(request: Request, db: Session = Depends(get_db)):
                                 <span style="font-size:.75rem;opacity:.6;">as <b id="rp-persona-label">{UI.escape(persona)}</b></span>
                             </div>
                             <div id="rp-messages" class="cm-msgs" data-pinned="true" hx-get="{_P}/messages/latest" hx-trigger="load" hx-swap="innerHTML"></div>
+                            <div id="rp-ai-working-{room_id}"></div>
                             <button id="rp-scroll-btn" class="btn-icon" style="display:none;" onclick="var m=document.getElementById('rp-messages');m.scrollTo({{top:m.scrollHeight,behavior:'smooth'}})">&#x25BC;</button>
                             <div class="fixed-shrink" style="border-top:var(--border-thick) solid var(--border);padding:.4rem;">
                                 <form id="rp-msg-form" style="display:flex;flex-direction:column;gap:.25rem;" hx-post="/im/in" hx-include="this" hx-swap="none">
