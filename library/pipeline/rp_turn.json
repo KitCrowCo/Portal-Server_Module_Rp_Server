@@ -1,0 +1,62 @@
+{
+ "name": "Story turn (rp server)",
+ "group": "conversation",
+ "objective": "One reply in a role-play room: a character's or the narrator's, from the room's prompt and recent messages.",
+ "roles": {
+  "storyteller": {
+   "needs": [
+    "chat"
+   ],
+   "about": "the model that plays characters and narrates in rp rooms",
+   "facts": {
+    "chars": {
+     "is": "len(str(messages))",
+     "label": "length of the conversation (characters)",
+     "kind": "number"
+    }
+   }
+  }
+ },
+ "params": {
+  "messages": {
+   "label": "Prompt and recent messages",
+   "type": "list"
+  },
+  "temperature": {
+   "label": "Temperature",
+   "type": "number",
+   "default": 0.85
+  },
+  "length": {
+   "label": "Longest reply (tokens)",
+   "type": "integer",
+   "default": 256
+  }
+ },
+ "steps": [
+  {
+   "id": "reply",
+   "type": "capability",
+   "needs": [
+    "messages"
+   ],
+   "gives": [
+    "text"
+   ],
+   "config": {
+    "role": "storyteller",
+    "capability": "chat",
+    "body": {
+     "messages": "{messages}",
+     "options": {
+      "temperature": "{temperature}",
+      "num_predict": "{length}"
+     }
+    },
+    "give": {
+     "text": "text"
+    }
+   }
+  }
+ ]
+}
